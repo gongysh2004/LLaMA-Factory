@@ -730,5 +730,23 @@
       "prompt": "content"
     },
     "folder": "python"
-  }
+  },
+  "aes_data": {
+    "file_name": "/workspace/user-data/datasets/AES_Dataset/aes_data.json",
+    "formatting": "sharegpt",
+    "columns": {
+    "messages": "conversations",
+    "images": "images"
+    },
+    "tags": {
+    "role_tag": "from",
+    "content_tag": "value",
+    "user_tag": "user",
+    "assistant_tag": "assistant"
+    },
+    "customized_status": 8,
+    "total_tokens": "319459",
+    "num_samples": "300",
+    "avg_tokens": "1064.86"
+}
 }
