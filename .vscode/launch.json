@@ -55,6 +55,78 @@
             "cwd": "${workspaceFolder}",
             "env": {},
             "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "LLaMA Factory: Train Qwen3-VL-30B LoRA (torchrun)",
+            "type": "python",
+            "request": "launch",
+            "module": "llamafactory.launcher",
+            "args": [
+                "--stage", "sft",
+                "--do_train", "True",
+                "--model_name_or_path", "/opt/data/model_scope/Qwen/Qwen3-VL-30B-A3B-Instruct",
+                "--preprocessing_num_workers", "16",
+                "--finetuning_type", "lora",
+                "--template", "qwen3_vl_nothink",
+                "--flash_attn", "auto",
+                "--dataset_dir", "data",
+                "--dataset", "aes_data",
+                "--cutoff_len", "2048",
+                "--learning_rate", "5e-05",
+                "--num_train_epochs", "3.0",
+                "--max_samples", "100000",
+                "--per_device_train_batch_size", "2",
+                "--gradient_accumulation_steps", "8",
+                "--lr_scheduler_type", "cosine",
+                "--max_grad_norm", "1.0",
+                "--logging_steps", "5",
+                "--save_steps", "100",
+                "--warmup_steps", "0",
+                "--packing", "False",
+                "--enable_thinking", "True",
+                "--report_to", "none",
+                "--output_dir", "saves/Qwen3-VL-30B-A3B-Instruct/lora/train_2025-12-24-16-01-20",
+                "--bf16", "True",
+                "--plot_loss", "True",
+                "--trust_remote_code", "True",
+                "--ddp_timeout", "180000000",
+                "--include_num_input_tokens_seen", "True",
+                "--optim", "adamw_torch",
+                "--lora_rank", "8",
+                "--lora_alpha", "16",
+                "--lora_dropout", "0",
+                "--lora_target", "all",
+                "--freeze_vision_tower", "True",
+                "--freeze_multi_modal_projector", "True",
+                "--image_max_pixels", "589824",
+                "--image_min_pixels", "1024",
+                "--video_max_pixels", "65536",
+                "--video_min_pixels", "256"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "NNODES": "1",
+                "NODE_RANK": "0",
+                "NPROC_PER_NODE": "8",
+                "MASTER_ADDR": "127.0.0.1",
+                "MASTER_PORT": "32913"
+            },
+            "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${command:python.interpreterPath}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }
