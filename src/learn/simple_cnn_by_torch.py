@@ -1,8 +1,16 @@
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+
+try:
+    import swanlab
+    SWANLAB_AVAILABLE = True
+except ImportError:
+    SWANLAB_AVAILABLE = False
+    print("Warning: swanlab not installed. Install with: pip install swanlab")
 
 
 class SimpleCNN(nn.Module):
@@ -57,6 +65,43 @@ def save_checkpoint(model, optimizer, epoch):
 
 
 def main():
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='Simple CNN Training with SwanLab')
+    parser.add_argument('--use-swanlab', action='store_true', 
+                        help='Use SwanLab for experiment tracking')
+    parser.add_argument('--epochs', type=int, default=1,
+                        help='Number of training epochs (default: 2)')
+    parser.add_argument('--batch-size', type=int, default=64,
+                        help='Batch size for training (default: 64)')
+    parser.add_argument('--lr', type=float, default=1.0,
+                        help='Learning rate (default: 1.0)')
+    parser.add_argument('--project', type=str, default='simple-cnn',
+                        help='SwanLab project name (default: simple-cnn)')
+    parser.add_argument('--experiment-name', type=str, default=None,
+                        help='SwanLab experiment name (default: auto-generated)')
+    
+    args = parser.parse_args()
+    
+    # 初始化SwanLab（如果启用）
+    if args.use_swanlab:
+        if not SWANLAB_AVAILABLE:
+            print("Error: SwanLab requested but not installed. Install with: pip install swanlab")
+            return
+        
+        swanlab.init(
+            project=args.project,
+            experiment_name=args.experiment_name,
+            config={
+                'epochs': args.epochs,
+                'batch_size': args.batch_size,
+                'learning_rate': args.lr,
+                'optimizer': 'Adadelta',
+                'model': 'SimpleCNN',
+                'dataset': 'MNIST',
+            }
+        )
+        print(f"SwanLab initialized: project={args.project}, experiment={args.experiment_name}")
+    
     # 设置设备（单GPU或CPU）
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f'Using device: {device}')
@@ -81,24 +126,28 @@ def main():
 
     # 数据加载器（减少num_workers以避免cuDNN冲突）
     train_loader = DataLoader(
-        train_dataset, batch_size=64, shuffle=True, num_workers=2, pin_memory=True
+        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True
     )
     test_loader = DataLoader(
-        test_dataset, batch_size=64, shuffle=False, num_workers=2, pin_memory=True
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=True
     )
 
     # 初始化模型、优化器、损失函数
     model = SimpleCNN().to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=1.0)
+    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
     criterion = nn.NLLLoss()
 
     # 加载Checkpoint，获取起始epoch
     start_epoch = load_checkpoint(model, optimizer)
-    epochs = 1  # 总训练epoch数
+    epochs = args.epochs
 
     # 训练循环
     for epoch in range(start_epoch, epochs):
         model.train()
+        train_loss = 0
+        train_correct = 0
+        train_total = 0
+        
         for batch_idx, (data, target) in enumerate(train_loader):
             try:
                 # print(f'Batch {batch_idx} data shape: {data.shape}, target shape: {target.shape}')
@@ -116,10 +165,24 @@ def main():
                 # 5. 参数更新：优化器（Adadelta）根据计算出的梯度，调整模型参数以减小损失（核心逻辑为梯度下降）
                 optimizer.step()
 
+                # 统计训练指标
+                train_loss += loss.item() * data.size(0)
+                pred = output.argmax(dim=1, keepdim=True)
+                train_correct += pred.eq(target.view_as(pred)).sum().item()
+                train_total += target.size(0)
+
                 # 打印训练信息
                 if batch_idx % 100 == 0:
+                    current_loss = loss.item()
                     print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
-                          f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+                          f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {current_loss:.6f}')
+                    
+                    # 记录到SwanLab
+                    if args.use_swanlab:
+                        swanlab.log({
+                            'train/batch_loss': current_loss,
+                            'train/batch': batch_idx + epoch * len(train_loader),
+                        })
             except RuntimeError as e:
                 if 'cuDNN' in str(e):
                     print(f'cuDNN error at batch {batch_idx}, clearing cache and retrying...')
@@ -128,6 +191,20 @@ def main():
                     continue
                 else:
                     raise
+        
+        # 计算epoch平均训练指标
+        avg_train_loss = train_loss / train_total
+        train_accuracy = 100. * train_correct / train_total
+        
+        print(f'Epoch {epoch} - Train Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%')
+        
+        # 记录epoch训练指标到SwanLab
+        if args.use_swanlab:
+            swanlab.log({
+                'train/epoch_loss': avg_train_loss,
+                'train/epoch_accuracy': train_accuracy,
+                'epoch': epoch,
+            })
 
         # 每个epoch结束后保存Checkpoint
         save_checkpoint(model, optimizer, epoch)
@@ -145,11 +222,25 @@ def main():
                 correct += pred.eq(target.view_as(pred)).sum().item()
 
         test_loss /= len(test_loader.dataset)
+        test_accuracy = 100. * correct / len(test_loader.dataset)
 
         # 打印测试信息
         print(f'\nTest set: Average loss: {test_loss:.4f}, '
               f'Accuracy: {correct}/{len(test_loader.dataset)} '
-              f'({100. * correct / len(test_loader.dataset):.0f}%)\n')
+              f'({test_accuracy:.2f}%)\n')
+        
+        # 记录测试指标到SwanLab
+        if args.use_swanlab:
+            swanlab.log({
+                'test/loss': test_loss,
+                'test/accuracy': test_accuracy,
+                'epoch': epoch,
+            })
+    
+    # 完成训练，结束SwanLab
+    if args.use_swanlab:
+        swanlab.finish()
+        print("SwanLab experiment finished.")
 
 if __name__ == '__main__':
     main()
